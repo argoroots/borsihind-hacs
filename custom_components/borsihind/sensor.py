@@ -50,11 +50,12 @@ class BorsihindSensorBase(CoordinatorEntity[BorsihindCoordinator], SensorEntity)
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        plan = entry.options.get(CONF_PLAN, entry.data.get(CONF_PLAN))
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": f"Börsihind.ee {PLANS[entry.data[CONF_PLAN]]}",
+            "name": f"Börsihind.ee {PLANS.get(plan, plan)}",
             "manufacturer": "Börsihind.ee",
-            "model": PLANS[entry.data[CONF_PLAN]],
+            "model": PLANS.get(plan, plan),
         }
 
 
