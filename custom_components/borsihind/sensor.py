@@ -63,7 +63,6 @@ class BorsihindCurrentPriceSensor(BorsihindSensorBase):
 
     _attr_name = "Current Price"
     _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
     def __init__(
@@ -113,7 +112,6 @@ class BorsihindAveragePriceSensor(BorsihindSensorBase):
 
     _attr_name = "Average Price"
     _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
     def __init__(
@@ -139,7 +137,6 @@ class BorsihindMinPriceSensor(BorsihindSensorBase):
 
     _attr_name = "Minimum Price"
     _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
     def __init__(
@@ -165,7 +162,6 @@ class BorsihindMaxPriceSensor(BorsihindSensorBase):
 
     _attr_name = "Maximum Price"
     _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
     def __init__(
@@ -209,7 +205,7 @@ class BorsihindPlanSensor(BorsihindSensorBase):
             CONF_PLAN,
             self.coordinator.entry.data.get(CONF_PLAN)
         )
-        return f"{plan} - {PLANS.get(plan, plan)}" if plan else None
+        return PLANS.get(plan, plan) if plan else None
 
 
 class BorsihindIntervalSensor(BorsihindSensorBase):
@@ -239,7 +235,6 @@ class BorsihindMarginalSensor(BorsihindSensorBase):
 
     _attr_name = "Provider Marginal"
     _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
