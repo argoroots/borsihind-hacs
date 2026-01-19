@@ -25,11 +25,16 @@ class BorsihindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.entry = entry
         self.plan = entry.data[CONF_PLAN]
 
+        # Calculate initial update interval to align with next hour
+        now = datetime.now()
+        next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        initial_interval = (next_hour - now).total_seconds() / 60
+
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=UPDATE_INTERVAL_MINUTES),
+            update_interval=timedelta(minutes=initial_interval if initial_interval > 0 else UPDATE_INTERVAL_MINUTES),
         )
 
     @property
@@ -59,6 +64,13 @@ class BorsihindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             raise UpdateFailed(f"Error fetching data: {response.status}")
 
                         data = await response.json()
+                        
+                        # After first update, align future updates to hourly at 0 minutes
+                        now = datetime.now()
+                        next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+                        seconds_until_next_hour = (next_hour - now).total_seconds()
+                        self.update_interval = timedelta(seconds=seconds_until_next_hour)
+                        
                         return self._process_data(data)
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err

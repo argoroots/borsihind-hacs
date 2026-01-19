@@ -97,7 +97,7 @@ class BorsihindCurrentPriceSensor(BorsihindSensorBase):
             "renewable_tax": round(current["renewable"] / 100, 4),
             "supply_security": round(current["supply_security"] / 100, 4),
             "excise": round(current["excise"] / 100, 4),
-            "marginal": round(self.coordinator.marginal / 100, 4),
+            "marginal": round(self.coordinator.marginal / 100, 5),
             "prices": [
                 {
                     "time": p["time"],
@@ -256,4 +256,4 @@ class BorsihindMarginalSensor(BorsihindSensorBase):
     def native_value(self) -> float | None:
         """Return the provider marginal."""
         # Convert from cents to euros
-        return round(self.coordinator.marginal / 100, 4)
+        return round(self.coordinator.marginal / 100, 5)

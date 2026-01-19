@@ -25,4 +25,4 @@ INTERVALS = {
 API_URL = "https://borsihind.s3.eu-central-1.amazonaws.com"
 
 # Update interval
-UPDATE_INTERVAL_MINUTES = 15
+UPDATE_INTERVAL_MINUTES = 60
