@@ -10,13 +10,13 @@ This integration fetches real-time electricity prices from [Börsihind.ee](https
 
 ## Features
 
-- 🔌 **Real-time electricity prices** with all components (spot price, transmission, taxes, provider margin)
-- 📊 **Price statistics** (current, average, minimum, maximum)
-- ⚡ **Energy Dashboard integration** for automatic cost calculations
-- 🏠 **Multiple network packages** supported (V1, V2, V4, V5)
-- ⏱️ **Flexible update intervals** (15-minute or 1-hour data)
-- 💰 **Configurable provider marginal** to match your electricity contract
-- 🤖 **Automation-ready** with detailed price attributes and forecasts
+- **Real-time electricity prices** with all components (spot price, transmission, taxes, provider margin)
+- **Price statistics** (current, average, minimum, maximum)
+- **Energy Dashboard integration** for automatic cost calculations
+- **Multiple network packages** supported (V1, V2, V4, V5)
+- **Flexible update intervals** (15-minute or 1-hour data)
+- **Configurable provider marginal** to match your electricity contract
+- **Automation-ready** with detailed price attributes and forecasts
 
 ## Installation
 
@@ -24,7 +24,7 @@ This integration fetches real-time electricity prices from [Börsihind.ee](https
 
 1. Open **HACS** in Home Assistant
 2. Go to **Integrations**
-3. Click the **three dots** (⋮) in the top right corner
+3. Click the **three dots** in the top right corner
 4. Select **Custom repositories**
 5. Add this repository:
    - **URL**: `https://github.com/argoroots/borsihind-hacks`
@@ -112,7 +112,7 @@ automation:
     action:
       - service: notify.notify
         data:
-          message: "⚡ Electricity price dropped below average! Good time for heavy loads."
+          message: "Electricity price dropped below average! Good time for heavy loads."
 ```
 
 ### Run water heater during minimum price
