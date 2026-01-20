@@ -63,7 +63,7 @@ class BorsihindCurrentPriceSensor(BorsihindSensorBase):
     """Sensor for current electricity price."""
 
     _attr_name = "Current Price"
-    _attr_icon = "mdi:currency-eur"
+    _attr_icon = "mdi:cash"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
@@ -113,7 +113,7 @@ class BorsihindAveragePriceSensor(BorsihindSensorBase):
     """Sensor for average future electricity price."""
 
     _attr_name = "Average Price"
-    _attr_icon = "mdi:currency-eur"
+    _attr_icon = "mdi:cash"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
@@ -139,7 +139,7 @@ class BorsihindMinPriceSensor(BorsihindSensorBase):
     """Sensor for minimum future electricity price."""
 
     _attr_name = "Minimum Price"
-    _attr_icon = "mdi:currency-eur"
+    _attr_icon = "mdi:cash"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
@@ -165,7 +165,7 @@ class BorsihindMaxPriceSensor(BorsihindSensorBase):
     """Sensor for maximum future electricity price."""
 
     _attr_name = "Maximum Price"
-    _attr_icon = "mdi:currency-eur"
+    _attr_icon = "mdi:cash"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
@@ -239,7 +239,7 @@ class BorsihindMarginalSensor(BorsihindSensorBase):
     """Sensor for provider marginal configuration."""
 
     _attr_name = "Provider Marginal"
-    _attr_icon = "mdi:currency-eur"
+    _attr_icon = "mdi:cash"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
