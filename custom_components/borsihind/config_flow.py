@@ -25,9 +25,6 @@ class BorsihindConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            await self.async_set_unique_id(f"borsihind_{user_input[CONF_PLAN]}")
-            self._abort_if_unique_id_configured()
-
             return self.async_create_entry(
                 title=f"Börsihind.ee {PLANS[user_input[CONF_PLAN]]}",
                 data=user_input,
