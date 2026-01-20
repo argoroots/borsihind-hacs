@@ -63,7 +63,7 @@ class BorsihindCurrentPriceSensor(BorsihindSensorBase):
     """Sensor for current electricity price."""
 
     _attr_name = "Current Price"
-    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
     def __init__(
@@ -235,7 +235,7 @@ class BorsihindMarginalSensor(BorsihindSensorBase):
     """Sensor for provider marginal configuration."""
 
     _attr_name = "Provider Marginal"
-    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
