@@ -24,11 +24,27 @@ class BorsihindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Initialize."""
         self.entry = entry
         self.plan = entry.data[CONF_PLAN]
+        self._cached_api_data = None
 
-        # Calculate initial update interval to align with next hour
+        # Calculate initial update interval to align with next interval period
         now = datetime.now()
-        next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-        initial_interval = (next_hour - now).total_seconds() / 60
+        interval_setting = entry.options.get(
+            CONF_INTERVAL, entry.data.get(CONF_INTERVAL, "15min")
+        )
+        
+        if interval_setting == "15min":
+            # Next 15-minute mark (0, 15, 30, or 45)
+            current_minute = now.minute
+            next_minute = ((current_minute // 15) + 1) * 15
+            if next_minute >= 60:
+                next_update = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            else:
+                next_update = now.replace(minute=next_minute, second=0, microsecond=0)
+        else:
+            # Next hour at 0 minutes
+            next_update = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        
+        initial_interval = (next_update - now).total_seconds() / 60
 
         super().__init__(
             hass,
@@ -52,28 +68,46 @@ class BorsihindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from API."""
-        interval_path = "" if self.interval == "1h" else "15min/"
-        url = f"{API_URL}/{interval_path}{self.plan}.json"
+        """Fetch data from API or reprocess cached data."""
+        now = datetime.now()
+        is_top_of_hour = now.minute == 0
+        
+        # Fetch from API only at top of hour, otherwise use cached data for 15min intervals
+        if is_top_of_hour or self._cached_api_data is None:
+            interval_path = "" if self.interval == "1h" else "15min/"
+            url = f"{API_URL}/{interval_path}{self.plan}.json"
 
-        try:
-            async with async_timeout.timeout(10):
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as response:
-                        if response.status != 200:
-                            raise UpdateFailed(f"Error fetching data: {response.status}")
+            try:
+                async with async_timeout.timeout(10):
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url) as response:
+                            if response.status != 200:
+                                raise UpdateFailed(f"Error fetching data: {response.status}")
 
-                        data = await response.json()
-                        
-                        # After first update, align future updates to hourly at 0 minutes
-                        now = datetime.now()
-                        next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-                        seconds_until_next_hour = (next_hour - now).total_seconds()
-                        self.update_interval = timedelta(seconds=seconds_until_next_hour)
-                        
-                        return self._process_data(data)
-        except Exception as err:
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
+                            self._cached_api_data = await response.json()
+            except Exception as err:
+                raise UpdateFailed(f"Error communicating with API: {err}") from err
+        
+        # Process data (either freshly fetched or cached)
+        processed_data = self._process_data(self._cached_api_data)
+        
+        # Schedule next update based on interval setting
+        if self.interval == "15min":
+            # Next 15-minute mark (0, 15, 30, or 45)
+            current_minute = now.minute
+            next_minute = ((current_minute // 15) + 1) * 15
+            if next_minute >= 60:
+                next_update = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            else:
+                next_update = now.replace(minute=next_minute, second=0, microsecond=0)
+        else:
+            # Next hour at 0 minutes
+            next_update = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        
+        seconds_until_next = (next_update - now).total_seconds()
+        self.update_interval = timedelta(seconds=seconds_until_next)
+        
+        return processed_data
 
     def _process_data(self, raw_data: list) -> dict[str, Any]:
         """Process raw API data into usable format."""
