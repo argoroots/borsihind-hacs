@@ -7,7 +7,7 @@
         "data": {
           "plan": "Network package",
           "interval": "Data interval",
-          "marginal": "Provider marginal (cents/kWh)"
+          "marginal": "Provider marginal (cents/kWh, incl. VAT)"
         }
       }
     },
@@ -27,7 +27,7 @@
         "data": {
           "plan": "Network package",
           "interval": "Data interval",
-          "marginal": "Provider marginal (cents/kWh)"
+          "marginal": "Provider marginal (cents/kWh, incl. VAT)"
         }
       }
     }

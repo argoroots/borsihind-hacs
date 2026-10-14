@@ -12,6 +12,7 @@ This integration fetches real-time electricity prices from [Börsihind.ee](https
 
 - **Real-time electricity prices** with all components (spot price, transmission, taxes, provider margin)
 - **Price statistics** (current, average, minimum, maximum)
+- **Cheapest 1–4 hour windows** as timestamp sensors, calculated the same way as on borsihind.ee
 - **Energy Dashboard integration** for automatic cost calculations
 - **Multiple network packages** supported (V1, V2, V4, V5)
 - **Flexible update intervals** (15-minute or 1-hour data)
@@ -27,7 +28,7 @@ This integration fetches real-time electricity prices from [Börsihind.ee](https
 3. Click the **three dots** in the top right corner
 4. Select **Custom repositories**
 5. Add this repository:
-   - **URL**: `https://github.com/argoroots/borsihind-hacks`
+   - **URL**: `https://github.com/argoroots/borsihind-hacs`
    - **Category**: `Integration`
 6. Click **Add**
 7. Search for **"Börsihind.ee"** in HACS
@@ -51,7 +52,7 @@ This integration fetches real-time electricity prices from [Börsihind.ee](https
 4. Configure:
    - **Network Package**: Select your network area (V1, V2, V4, or V5)
    - **Data Interval**: Choose 15 minutes or 1 hour
-   - **Provider Marginal**: Enter your provider's margin in cents (0-100)
+   - **Provider Marginal**: Enter your provider's margin in cents/kWh, including VAT (0-100)
 
 ### Changing Settings
 
@@ -62,7 +63,7 @@ You can modify the network package, interval, and marginal at any time:
 
 ## Sensors
 
-The integration creates 7 sensors:
+The integration creates 11 sensors:
 
 | Sensor | Description | Unit |
 |--------|-------------|------|
@@ -70,6 +71,7 @@ The integration creates 7 sensors:
 | **Average Price** | Average of all future prices | €/kWh |
 | **Minimum Price** | Lowest upcoming price | €/kWh |
 | **Maximum Price** | Highest upcoming price | €/kWh |
+| **Cheapest 1h** … **Cheapest 4h** | Start of the cheapest 1–4 hour window (attributes: `end`, `average_price`) | timestamp |
 | **Network Package** | Configured network plan | - |
 | **Data Interval** | Update frequency setting | - |
 | **Provider Marginal** | Provider markup cost | €/kWh |
@@ -77,14 +79,15 @@ The integration creates 7 sensors:
 ### Current Price Attributes
 
 The Current Price sensor includes detailed attributes:
-- `time` - Timestamp of current price
+- `time` - Start of the current price slot (Tallinn time, HH:MM)
+- `start`, `end` - Current slot as ISO timestamps
 - `electricity_price` - Nord Pool spot price
 - `transmission` - Network transmission fee
 - `renewable_tax` - Renewable energy surcharge
 - `supply_security` - Supply security fee
 - `excise` - Electricity excise tax
 - `marginal` - Provider markup
-- `prices` - Array of next 24 price periods for automation
+- `prices` - All upcoming price periods (`time`, `start`, `end`, `price`) for automation and charts. Not stored in the recorder database.
 
 ## Energy Dashboard Integration
 
@@ -115,21 +118,21 @@ automation:
           message: "Electricity price dropped below average! Good time for heavy loads."
 ```
 
-### Run water heater during minimum price
+### Run water heater during the cheapest 3 hours
 
 ```yaml
 automation:
-  - alias: "Smart water heater - cheapest hour"
+  - alias: "Smart water heater - cheapest 3 hours"
     trigger:
-      - platform: time_pattern
-        minutes: "/15"
-    condition:
-      - condition: template
-        value_template: >
-          {{ states('sensor.borsihind_ee_vork_1_current_price') | float ==
-             states('sensor.borsihind_ee_vork_1_minimum_price') | float }}
+      - platform: time
+        at: sensor.borsihind_ee_vork_1_cheapest_3h
     action:
       - service: switch.turn_on
+        target:
+          entity_id: switch.water_heater
+      - delay:
+          hours: 3
+      - service: switch.turn_off
         target:
           entity_id: switch.water_heater
 ```
@@ -154,10 +157,11 @@ automation:
 ## Technical Details
 
 - **Data source**: Börsihind.ee S3 bucket (`borsihind.s3.eu-central-1.amazonaws.com`)
-- **Update frequency**: Every 15 minutes
+- **Update frequency**: Sensors update at every price slot (15 min or 1 h); price data is downloaded hourly
 - **IoT class**: Cloud polling
-- **Price includes**: All taxes and fees, 24% VAT included
-- **Future prices**: Up to 24 periods ahead (depending on available data)
+- **Price includes**: All taxes and fees, 24% VAT included. The provider marginal is entered with VAT
+- **Future prices**: Until the end of today, or tomorrow once Nord Pool publishes it (around 14:00 Estonian time)
+- **Times**: Price slots follow Estonian time (Europe/Tallinn), independent of the Home Assistant time zone
 
 ### Price Components
 
@@ -180,7 +184,7 @@ All prices in €/kWh include:
 ## Support
 
 For issues, questions, or feature requests:
-- **GitHub Issues**: [borsihind-hacks/issues](https://github.com/argoroots/borsihind-hacks/issues)
+- **GitHub Issues**: [borsihind-hacs/issues](https://github.com/argoroots/borsihind-hacs/issues)
 - **Email**: argo@roots.ee
 
 ## Credits

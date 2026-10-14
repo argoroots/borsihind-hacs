@@ -1,6 +1,8 @@
 """Sensor platform for Börsihind.ee."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -13,8 +15,16 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_PLAN, DOMAIN, PLANS, INTERVALS
+from .const import CONF_PLAN, DOMAIN, PLANS
 from .coordinator import BorsihindCoordinator
+from .prices import CHEAPEST_HOURS
+
+PRICE_UNIT = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
+
+
+def to_euros(cents: float) -> float:
+    """Convert cents/kWh to EUR/kWh for sensor states."""
+    return round(cents / 100, 5)
 
 
 async def async_setup_entry(
@@ -28,9 +38,10 @@ async def async_setup_entry(
     async_add_entities(
         [
             BorsihindCurrentPriceSensor(coordinator, entry),
-            BorsihindAveragePriceSensor(coordinator, entry),
-            BorsihindMinPriceSensor(coordinator, entry),
-            BorsihindMaxPriceSensor(coordinator, entry),
+            BorsihindStatisticSensor(coordinator, entry, "average", "Average Price"),
+            BorsihindStatisticSensor(coordinator, entry, "min", "Minimum Price"),
+            BorsihindStatisticSensor(coordinator, entry, "max", "Maximum Price"),
+            *(BorsihindCheapestSensor(coordinator, entry, hours) for hours in CHEAPEST_HOURS),
             BorsihindPlanSensor(coordinator, entry),
             BorsihindIntervalSensor(coordinator, entry),
             BorsihindMarginalSensor(coordinator, entry),
@@ -60,12 +71,14 @@ class BorsihindSensorBase(CoordinatorEntity[BorsihindCoordinator], SensorEntity)
 
 
 class BorsihindCurrentPriceSensor(BorsihindSensorBase):
-    """Sensor for current electricity price."""
+    """Sensor for the current electricity price, all fees, VAT and marginal included."""
 
     _attr_name = "Current Price"
     _attr_icon = "mdi:cash"
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
+    _attr_native_unit_of_measurement = PRICE_UNIT
+    # The forecast list is large and changes every slot; keep it out of the database
+    _unrecorded_attributes = frozenset({"prices"})
 
     def __init__(
         self,
@@ -79,112 +92,110 @@ class BorsihindCurrentPriceSensor(BorsihindSensorBase):
     @property
     def native_value(self) -> float | None:
         """Return the current price."""
-        if self.coordinator.data and "current" in self.coordinator.data:
-            # Convert from cents to euros
-            return round(self.coordinator.data["current"]["total"] / 100, 4)
+        if self.coordinator.data:
+            return to_euros(self.coordinator.data["current"]["total"])
         return None
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return additional attributes."""
-        if not self.coordinator.data or "current" not in self.coordinator.data:
+        """Return price components and the forecast."""
+        if not self.coordinator.data:
             return {}
 
         current = self.coordinator.data["current"]
         return {
             "time": current["time"],
-            "electricity_price": round(current["electricity"] / 100, 4),
-            "transmission": round(current["transmission"] / 100, 4),
-            "renewable_tax": round(current["renewable"] / 100, 4),
-            "supply_security": round(current["supply_security"] / 100, 4),
-            "excise": round(current["excise"] / 100, 4),
-            "marginal": round(self.coordinator.marginal / 100, 5),
+            "start": current["start"].isoformat(),
+            "end": current["end"].isoformat(),
+            "electricity_price": to_euros(current["electricity"]),
+            "transmission": to_euros(current["transmission"]),
+            "renewable_tax": to_euros(current["renewable"]),
+            "supply_security": to_euros(current["supply_security"]),
+            "excise": to_euros(current["excise"]),
+            "marginal": to_euros(self.coordinator.marginal),
             "prices": [
                 {
                     "time": p["time"],
-                    "price": round(p["total"] / 100, 4),
+                    "start": p["start"].isoformat(),
+                    "end": p["end"].isoformat(),
+                    "price": to_euros(p["total"]),
                 }
-                for p in self.coordinator.data.get("prices", [])[:24]
+                for p in self.coordinator.data["prices"]
             ],
         }
 
 
-class BorsihindAveragePriceSensor(BorsihindSensorBase):
-    """Sensor for average future electricity price."""
+class BorsihindStatisticSensor(BorsihindSensorBase):
+    """Average, minimum or maximum of the remaining prices."""
 
-    _attr_name = "Average Price"
     _attr_icon = "mdi:cash"
-    _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PRICE_UNIT
 
     def __init__(
         self,
         coordinator: BorsihindCoordinator,
         entry: ConfigEntry,
+        key: str,
+        name: str,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_average_price"
+        self._key = key
+        self._attr_name = name
+        # Unique IDs match the earlier per-statistic sensor classes
+        self._attr_unique_id = f"{entry.entry_id}_{key}_price"
 
     @property
     def native_value(self) -> float | None:
-        """Return the average price."""
-        if self.coordinator.data and "average" in self.coordinator.data:
-            # Convert from cents to euros
-            return round(self.coordinator.data["average"] / 100, 4)
+        """Return the statistic."""
+        if self.coordinator.data:
+            return to_euros(self.coordinator.data[self._key])
         return None
 
 
-class BorsihindMinPriceSensor(BorsihindSensorBase):
-    """Sensor for minimum future electricity price."""
+class BorsihindCheapestSensor(BorsihindSensorBase):
+    """Start time of the cheapest window of N hours, VAT and marginal included."""
 
-    _attr_name = "Minimum Price"
-    _attr_icon = "mdi:cash"
-    _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
+    _attr_icon = "mdi:clock-start"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(
         self,
         coordinator: BorsihindCoordinator,
         entry: ConfigEntry,
+        hours: int,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_min_price"
+        self._hours = hours
+        self._attr_name = f"Cheapest {hours}h"
+        self._attr_unique_id = f"{entry.entry_id}_cheapest_{hours}h"
 
     @property
-    def native_value(self) -> float | None:
-        """Return the minimum price."""
-        if self.coordinator.data and "min" in self.coordinator.data:
-            # Convert from cents to euros
-            return round(self.coordinator.data["min"] / 100, 4)
-        return None
-
-
-class BorsihindMaxPriceSensor(BorsihindSensorBase):
-    """Sensor for maximum future electricity price."""
-
-    _attr_name = "Maximum Price"
-    _attr_icon = "mdi:cash"
-    _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
-
-    def __init__(
-        self,
-        coordinator: BorsihindCoordinator,
-        entry: ConfigEntry,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_max_price"
+    def _window(self) -> dict | None:
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data["cheapest"].get(self._hours)
 
     @property
-    def native_value(self) -> float | None:
-        """Return the maximum price."""
-        if self.coordinator.data and "max" in self.coordinator.data:
-            # Convert from cents to euros
-            return round(self.coordinator.data["max"] / 100, 4)
-        return None
+    def native_value(self) -> datetime | None:
+        """Return the window start, or unknown when there is not enough data."""
+        window = self._window
+        return window["start"] if window else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return the window end and average price."""
+        window = self._window
+        if not window:
+            return {}
+
+        return {
+            "end": window["end"].isoformat(),
+            "average_price": to_euros(window["average"]),
+            "hours": self._hours,
+        }
 
 
 class BorsihindPlanSensor(BorsihindSensorBase):
@@ -206,10 +217,7 @@ class BorsihindPlanSensor(BorsihindSensorBase):
     @property
     def native_value(self) -> str | None:
         """Return the network package."""
-        plan = self.coordinator.entry.options.get(
-            CONF_PLAN,
-            self.coordinator.entry.data.get(CONF_PLAN)
-        )
+        plan = self.coordinator.plan
         return PLANS.get(plan, plan) if plan else None
 
 
@@ -236,12 +244,12 @@ class BorsihindIntervalSensor(BorsihindSensorBase):
 
 
 class BorsihindMarginalSensor(BorsihindSensorBase):
-    """Sensor for provider marginal configuration."""
+    """Sensor for provider marginal configuration (with VAT)."""
 
     _attr_name = "Provider Marginal"
     _attr_icon = "mdi:cash"
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
+    _attr_native_unit_of_measurement = PRICE_UNIT
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -256,5 +264,4 @@ class BorsihindMarginalSensor(BorsihindSensorBase):
     @property
     def native_value(self) -> float | None:
         """Return the provider marginal."""
-        # Convert from cents to euros
-        return round(self.coordinator.marginal / 100, 5)
+        return to_euros(self.coordinator.marginal)

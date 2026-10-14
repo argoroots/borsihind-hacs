@@ -1,11 +1,13 @@
 {
   "domain": "borsihind",
   "name": "Börsihind.ee",
-  "codeowners": ["@argoroots"],
+  "codeowners": [
+    "@argoroots"
+  ],
   "config_flow": true,
-  "documentation": "https://github.com/argoroots/borsihind-hacks",
+  "documentation": "https://github.com/argoroots/borsihind-hacs",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/argoroots/borsihind-hacks/issues",
+  "issue_tracker": "https://github.com/argoroots/borsihind-hacs/issues",
   "requirements": [],
-  "version": "1.1.0"
+  "version": "1.2.0"
 }

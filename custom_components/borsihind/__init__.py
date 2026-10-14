@@ -27,9 +27,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Update options and refresh coordinator."""
-    coordinator: BorsihindCoordinator = hass.data[DOMAIN][entry.entry_id]
-    await coordinator.async_request_refresh()
+    """Reload so a changed plan, interval or marginal takes effect everywhere."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

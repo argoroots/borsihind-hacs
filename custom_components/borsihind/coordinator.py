@@ -1,57 +1,46 @@
 """Data update coordinator for Börsihind.ee."""
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 import logging
 from typing import Any
 
-import aiohttp
-import async_timeout
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
-from .const import API_URL, CONF_MARGINAL, CONF_PLAN, CONF_INTERVAL, DOMAIN, UPDATE_INTERVAL_MINUTES
+from .const import API_URL, CONF_INTERVAL, CONF_MARGINAL, CONF_PLAN, DOMAIN, FETCH_INTERVAL
+from .prices import process_prices, summarize
 
 _LOGGER = logging.getLogger(__name__)
 
+# Small delay after a slot boundary, so the new slot is already current
+BOUNDARY_DELAY = timedelta(seconds=5)
+
 
 class BorsihindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Class to manage fetching electricity price data."""
+    """Fetch price data and refresh sensors at every slot boundary."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize."""
         self.entry = entry
-        self.plan = entry.data[CONF_PLAN]
-        self._cached_api_data = None
-
-        # Calculate initial update interval to align with next interval period
-        now = datetime.now()
-        interval_setting = entry.options.get(
-            CONF_INTERVAL, entry.data.get(CONF_INTERVAL, "15min")
-        )
-        
-        if interval_setting == "15min":
-            # Next 15-minute mark (0, 15, 30, or 45)
-            current_minute = now.minute
-            next_minute = ((current_minute // 15) + 1) * 15
-            if next_minute >= 60:
-                next_update = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-            else:
-                next_update = now.replace(minute=next_minute, second=0, microsecond=0)
-        else:
-            # Next hour at 0 minutes
-            next_update = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-        
-        initial_interval = (next_update - now).total_seconds() / 60
+        self._cached_api_data: dict[str, Any] | None = None
+        self._last_fetch: datetime | None = None
 
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=initial_interval if initial_interval > 0 else UPDATE_INTERVAL_MINUTES),
+            update_interval=self._until_next_slot(dt_util.utcnow()),
         )
+
+    @property
+    def plan(self) -> str:
+        """Get plan value from options or data."""
+        return self.entry.options.get(CONF_PLAN, self.entry.data[CONF_PLAN])
 
     @property
     def interval(self) -> str:
@@ -62,125 +51,57 @@ class BorsihindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def marginal(self) -> float:
-        """Get marginal value from options or data."""
+        """Get marginal (cents/kWh with VAT) from options or data."""
         return self.entry.options.get(
             CONF_MARGINAL, self.entry.data.get(CONF_MARGINAL, 0)
         )
 
+    @property
+    def slot_minutes(self) -> int:
+        """Length of one price slot in minutes."""
+        return 60 if self.interval == "1h" else 15
+
+    def _until_next_slot(self, now: datetime) -> timedelta:
+        """Time until just after the next slot boundary (UTC, same boundaries as Tallinn)."""
+        slot = timedelta(minutes=self.slot_minutes)
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        next_boundary = midnight + ((now - midnight) // slot + 1) * slot
+        return next_boundary - now + BOUNDARY_DELAY
+
+    async def _fetch(self) -> dict[str, Any]:
+        """Download the v2 price file for the current plan and interval."""
+        url = f"{API_URL}/v2/{self.interval}/{self.plan}.json"
+        session = async_get_clientsession(self.hass)
+
+        async with asyncio.timeout(10):
+            response = await session.get(url)
+            response.raise_for_status()
+            return await response.json(content_type=None)
+
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from API or reprocess cached data."""
-        now = datetime.now()
-        is_top_of_hour = now.minute == 0
-        
-        # Fetch from API only at top of hour, otherwise use cached data for 15min intervals
-        if is_top_of_hour or self._cached_api_data is None:
-            interval_path = "" if self.interval == "1h" else "15min/"
-            url = f"{API_URL}/{interval_path}{self.plan}.json"
+        """Fetch new data when due, then recalculate prices for the current slot."""
+        now = dt_util.utcnow()
 
+        # Fetch hourly (the file is updated during the day and tomorrow's prices
+        # arrive in the afternoon). Based on elapsed time, so a refresh can never be skipped.
+        if self._last_fetch is None or now - self._last_fetch >= FETCH_INTERVAL:
             try:
-                async with async_timeout.timeout(10):
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(url) as response:
-                            if response.status != 200:
-                                raise UpdateFailed(f"Error fetching data: {response.status}")
+                self._cached_api_data = await self._fetch()
+                self._last_fetch = now
+            except Exception as err:  # noqa: BLE001
+                if self._cached_api_data is None:
+                    raise UpdateFailed(f"Error fetching price data: {err}") from err
+                _LOGGER.warning("Error fetching price data, using cached data: %s", err)
 
-                            self._cached_api_data = await response.json()
-            except Exception as err:
-                raise UpdateFailed(f"Error communicating with API: {err}") from err
-        
-        # Process data (either freshly fetched or cached)
-        processed_data = self._process_data(self._cached_api_data)
-        
-        # Schedule next update based on interval setting
-        if self.interval == "15min":
-            # Next 15-minute mark (0, 15, 30, or 45)
-            current_minute = now.minute
-            next_minute = ((current_minute // 15) + 1) * 15
-            if next_minute >= 60:
-                next_update = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-            else:
-                next_update = now.replace(minute=next_minute, second=0, microsecond=0)
-        else:
-            # Next hour at 0 minutes
-            next_update = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-        
-        seconds_until_next = (next_update - now).total_seconds()
-        self.update_interval = timedelta(seconds=seconds_until_next)
-        
-        return processed_data
+        # Run again just after the next slot starts
+        self.update_interval = self._until_next_slot(now)
 
-    def _process_data(self, raw_data: list) -> dict[str, Any]:
-        """Process raw API data into usable format."""
-        now = datetime.now()
-        current_hour = now.hour
-        current_minute = now.minute
-        current_interval = (current_minute // 15) * 15
-        is_1h = self.interval == "1h"
-
-        prices = []
-        for item in raw_data:
-            price_year = item[0]
-            price_month = item[1]
-            price_day = item[2]
-            price_hour = item[3]
-            price_minute = item[4]
-
-            # Create date objects for comparison
-            price_date = datetime(price_year, price_month, price_day, price_hour, price_minute)
-            current_date = datetime(
-                now.year, now.month, now.day,
-                current_hour,
-                0 if is_1h else current_interval
-            )
-
-            # Filter: keep entries that are at or after the current time
-            if price_date < current_date:
-                continue
-
-            prices.append({
-                "time": f"{str(price_hour).zfill(2)}:{str(price_minute).zfill(2)}",
-                "hour": price_hour,
-                "minute": price_minute,
-                "excise": item[8] * 100,
-                "supply_security": item[9] * 100,
-                "renewable": item[7] * 100,
-                "transmission": item[6] * 100,
-                "electricity": item[5] * 100,
-                "year": price_year,
-                "month": price_month,
-                "day": price_day,
-            })
-
+        prices = process_prices(self._cached_api_data, now, self.marginal)
         if not prices:
+            # Cached data has run out; fetch again on the next update
+            self._last_fetch = None
             raise UpdateFailed("No price data available for current time")
 
-        # Calculate total price with marginal for each entry
-        for price in prices:
-            price["total"] = (
-                self.marginal
-                + price["excise"]
-                + price["supply_security"]
-                + price["renewable"]
-                + price["transmission"]
-                + price["electricity"]
-            )
-
-        # Find current price (first in filtered list)
-        current_price = prices[0]
-
-        # Calculate averages for future prices
-        future_prices = [p["total"] for p in prices]
-        avg_price = sum(future_prices) / len(future_prices) if future_prices else 0
-
-        # Find min and max
-        min_price = min(future_prices) if future_prices else 0
-        max_price = max(future_prices) if future_prices else 0
-
-        return {
-            "current": current_price,
-            "prices": prices,
-            "average": avg_price,
-            "min": min_price,
-            "max": max_price,
-            "last_update": now,
-        }
+        data = summarize(prices, 60 // self.slot_minutes)
+        data["last_update"] = now
+        return data

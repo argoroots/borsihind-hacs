@@ -1,4 +1,5 @@
 """Constants for the Börsihind.ee integration."""
+from datetime import timedelta
 
 DOMAIN = "borsihind"
 
@@ -24,5 +25,5 @@ INTERVALS = {
 # API
 API_URL = "https://borsihind.s3.eu-central-1.amazonaws.com"
 
-# Update interval
-UPDATE_INTERVAL_MINUTES = 60
+# How often to download the price file (sensors still update at every slot)
+FETCH_INTERVAL = timedelta(hours=1)
