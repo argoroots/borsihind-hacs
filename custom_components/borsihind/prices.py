@@ -4,12 +4,9 @@ Pure functions without Home Assistant imports, so they can be tested on their ow
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, tzinfo
 import math
 from typing import Any
-from zoneinfo import ZoneInfo
-
-TALLINN = ZoneInfo("Europe/Tallinn")
 
 # Cheapest window lengths in hours
 CHEAPEST_HOURS = (1, 2, 3, 4)
@@ -21,15 +18,18 @@ def js_round(value: float) -> int:
 
 
 def parse_time(value: str) -> datetime:
-    """Parse a v2 UTC timestamp like 2026-10-14T06:30:00Z."""
+    """Parse a UTC timestamp like 2026-10-14T06:30:00Z."""
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def process_prices(raw: dict[str, Any], now: datetime, marginal: float) -> list[dict[str, Any]]:
-    """Convert v2 price data to slots from the current one onwards.
+def process_prices(
+    raw: dict[str, Any], now: datetime, marginal: float, time_zone: tzinfo
+) -> list[dict[str, Any]]:
+    """Convert price data to slots from the current one onwards.
 
     Prices in the file are EUR/kWh with VAT. Returned components are in cents/kWh.
-    `marginal` is in cents/kWh and already includes VAT.
+    `marginal` is in cents/kWh and already includes VAT. `time_zone` is used for
+    the HH:MM `time` labels (the Home Assistant time zone).
     """
     prices = []
 
@@ -44,7 +44,7 @@ def process_prices(raw: dict[str, Any], now: datetime, marginal: float) -> list[
         prices.append({
             "start": start,
             "end": end,
-            "time": start.astimezone(TALLINN).strftime("%H:%M"),
+            "time": start.astimezone(time_zone).strftime("%H:%M"),
             "electricity": item["electricity"] * 100,
             "transmission": item["transmission"] * 100,
             "renewable": item["renewable"] * 100,

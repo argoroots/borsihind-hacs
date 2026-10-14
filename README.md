@@ -79,7 +79,7 @@ The integration creates 11 sensors:
 ### Current Price Attributes
 
 The Current Price sensor includes detailed attributes:
-- `time` - Start of the current price slot (Tallinn time, HH:MM)
+- `time` - Start of the current price slot (Home Assistant time zone, HH:MM)
 - `start`, `end` - Current slot as ISO timestamps
 - `electricity_price` - Nord Pool spot price
 - `transmission` - Network transmission fee
@@ -161,7 +161,7 @@ automation:
 - **IoT class**: Cloud polling
 - **Price includes**: All taxes and fees, 24% VAT included. The provider marginal is entered with VAT
 - **Future prices**: Until the end of today, or tomorrow once Nord Pool publishes it (around 14:00 Estonian time)
-- **Times**: Price slots follow Estonian time (Europe/Tallinn), independent of the Home Assistant time zone
+- **Times**: Shown in the Home Assistant time zone; prices are matched to the correct slot regardless of it
 
 ### Price Components
 

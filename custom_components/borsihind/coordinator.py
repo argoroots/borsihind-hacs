@@ -62,14 +62,14 @@ class BorsihindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return 60 if self.interval == "1h" else 15
 
     def _until_next_slot(self, now: datetime) -> timedelta:
-        """Time until just after the next slot boundary (UTC, same boundaries as Tallinn)."""
+        """Time until just after the next slot boundary (slots are aligned to UTC)."""
         slot = timedelta(minutes=self.slot_minutes)
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
         next_boundary = midnight + ((now - midnight) // slot + 1) * slot
         return next_boundary - now + BOUNDARY_DELAY
 
     async def _fetch(self) -> dict[str, Any]:
-        """Download the v2 price file for the current plan and interval."""
+        """Download the price file for the current plan and interval."""
         url = f"{API_URL}/v2/{self.interval}/{self.plan}.json"
         session = async_get_clientsession(self.hass)
 
@@ -96,7 +96,9 @@ class BorsihindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Run again just after the next slot starts
         self.update_interval = self._until_next_slot(now)
 
-        prices = process_prices(self._cached_api_data, now, self.marginal)
+        prices = process_prices(
+            self._cached_api_data, now, self.marginal, dt_util.get_default_time_zone()
+        )
         if not prices:
             # Cached data has run out; fetch again on the next update
             self._last_fetch = None
